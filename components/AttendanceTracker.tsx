@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -12,42 +13,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar } from "lucide-react";
+import { Calendar, Upload } from "lucide-react";
 
 interface Student {
   id: number;
   name: string;
 }
-
 interface AttendanceRecord {
   [studentId: number]: boolean;
 }
-
 interface AttendanceData {
   [date: string]: AttendanceRecord;
 }
-
 interface StorageData {
   attendanceData: AttendanceData;
   students: Student[];
 }
-
 const STORAGE_KEY = "attendanceTrackerData";
 
 const AttendanceTracker: React.FC = () => {
-  const [students, setStudents] = useState<Student[]>([
-    { id: 1, name: "Alice Smith" },
-    { id: 2, name: "Bob Johnson" },
-    { id: 3, name: "Carol Williams" },
-  ]);
-
+  const [students, setStudents] = useState<Student[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0],
   );
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({});
   const [newStudent, setNewStudent] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load data from localStorage on component mount
   useEffect(() => {
     const loadStorageData = (): void => {
       const savedData = localStorage.getItem(STORAGE_KEY);
@@ -61,11 +54,9 @@ const AttendanceTracker: React.FC = () => {
         }
       }
     };
-
     loadStorageData();
   }, []);
 
-  // Save data to localStorage whenever it changes
   useEffect(() => {
     const saveStorageData = (): void => {
       const dataToSave: StorageData = {
@@ -74,19 +65,70 @@ const AttendanceTracker: React.FC = () => {
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     };
-
     saveStorageData();
   }, [attendanceData, students]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setUploadError("");
+
+    if (!file) return;
+
+    if (!file.name.endsWith(".txt") && !file.name.endsWith(".csv")) {
+      setUploadError("Please upload a .txt or .csv file");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const lines = content.split(/\r?\n/).filter((line) => line.trim());
+
+        const newStudents: Student[] = lines.map((name, index) => ({
+          id: Math.max(0, ...students.map((s) => s.id)) + index + 1,
+          name: name.trim(),
+        }));
+
+        setStudents((prevStudents) => {
+          const existingNames = new Set(
+            prevStudents.map((s) => s.name.toLowerCase()),
+          );
+
+          const uniqueNewStudents = newStudents.filter(
+            (student) => !existingNames.has(student.name.toLowerCase()),
+          );
+
+          return [...prevStudents, ...uniqueNewStudents];
+        });
+
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      } catch (error) {
+        setUploadError("Error processing file. Please check the format.");
+        console.error("Error processing file:", error);
+      }
+    };
+
+    reader.onerror = () => {
+      setUploadError("Error reading file");
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const toggleAttendance = (studentId: number): void => {
     setAttendanceData((prev) => {
-      // Create deep copy of the previous state
       const newData = JSON.parse(JSON.stringify(prev));
-      // Initialize the date object if it doesn't exist
       if (!newData[selectedDate]) {
         newData[selectedDate] = {};
       }
-      // Toggle the attendance
       newData[selectedDate][studentId] = !newData[selectedDate][studentId];
       return newData;
     });
@@ -147,16 +189,43 @@ const AttendanceTracker: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={addStudent} className="flex gap-2 mb-6">
-            <Input
-              type="text"
-              placeholder="Add new student"
-              value={newStudent}
-              onChange={handleNewStudentChange}
-              className="flex-1"
-            />
-            <Button type="submit">Add Student</Button>
-          </form>
+          <div className="flex gap-2 mb-6">
+            <div className="flex-1">
+              <form onSubmit={addStudent} className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="Add new student"
+                  value={newStudent}
+                  onChange={handleNewStudentChange}
+                  className="flex-1"
+                />
+                <Button type="submit">Add Student</Button>
+              </form>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept=".txt,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                ref={fileInputRef}
+              />
+              <Button
+                variant="outline"
+                onClick={handleUploadClick}
+                className="flex items-center gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Import Students
+              </Button>
+            </div>
+          </div>
+
+          {uploadError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{uploadError}</AlertDescription>
+            </Alert>
+          )}
 
           <Table>
             <TableHeader>
@@ -193,7 +262,6 @@ const AttendanceTracker: React.FC = () => {
               ))}
             </TableBody>
           </Table>
-
           <div className="mt-4 flex justify-between items-center text-sm text-gray-600">
             <div>
               Present: {getPresentCount()} / {students.length} students
