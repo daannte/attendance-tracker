@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar, Upload } from "lucide-react";
+import { Calendar, Upload, Edit, Trash2, Check, X } from "lucide-react";
 
 interface Student {
   id: number;
@@ -39,6 +39,8 @@ const AttendanceTracker: React.FC = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({});
   const [newStudent, setNewStudent] = useState<string>("");
   const [uploadError, setUploadError] = useState<string>("");
+  const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+  const [editStudentName, setEditStudentName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -146,6 +148,43 @@ const AttendanceTracker: React.FC = () => {
     }
   };
 
+  const deleteStudent = (studentId: number): void => {
+    setStudents((prev) => prev.filter((student) => student.id !== studentId));
+
+    // Remove attendance records for this student
+    setAttendanceData((prev) => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      Object.keys(newData).forEach((date) => {
+        delete newData[date][studentId];
+      });
+      return newData;
+    });
+  };
+
+  const startEditStudent = (student: Student): void => {
+    setEditingStudentId(student.id);
+    setEditStudentName(student.name);
+  };
+
+  const cancelEditStudent = (): void => {
+    setEditingStudentId(null);
+    setEditStudentName("");
+  };
+
+  const saveEditStudent = (): void => {
+    if (editStudentName.trim()) {
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === editingStudentId
+            ? { ...student, name: editStudentName.trim() }
+            : student,
+        ),
+      );
+      setEditingStudentId(null);
+      setEditStudentName("");
+    }
+  };
+
   const isPresent = (studentId: number): boolean => {
     return attendanceData[selectedDate]?.[studentId] || false;
   };
@@ -232,13 +271,23 @@ const AttendanceTracker: React.FC = () => {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {students.map((student) => (
                 <TableRow key={student.id}>
-                  <TableCell>{student.name}</TableCell>
+                  <TableCell>
+                    {editingStudentId === student.id ? (
+                      <Input
+                        value={editStudentName}
+                        onChange={(e) => setEditStudentName(e.target.value)}
+                        className="w-full"
+                      />
+                    ) : (
+                      student.name
+                    )}
+                  </TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -251,12 +300,52 @@ const AttendanceTracker: React.FC = () => {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant={isPresent(student.id) ? "outline" : "default"}
-                      onClick={() => toggleAttendance(student.id)}
-                    >
-                      Mark {isPresent(student.id) ? "Absent" : "Present"}
-                    </Button>
+                    <div className="flex gap-2">
+                      {editingStudentId === student.id ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={saveEditStudent}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={cancelEditStudent}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleAttendance(student.id)}
+                          >
+                            {isPresent(student.id)
+                              ? "Mark Absent"
+                              : "Mark Present"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditStudent(student)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteStudent(student.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
